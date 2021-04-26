@@ -106,7 +106,7 @@ void Packets::handleRaw(const uint8_t *buffer, size_t size)
     return;
   }
   this->motors[index]->setMode(Motor::Raw);
-  this->motors[index]->setRawSpeed(buffer[2]);
+  this->motors[index]->setRawSpeed((int8_t) buffer[2]);
   this->sendStatus();
 }
 
