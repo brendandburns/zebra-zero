@@ -11,10 +11,9 @@ stopCmd = b'\x02'
 rawCmd = b'\x03'
 speedCmd = b'\x04'
 positionCmd = b'\x05'
-gripperOpenCmd = b'\x06'
-gripperCloseCmd = b'\x07'
-gripperStatusCmd = b'\x08'
 
+# Encoder Ticks / 90 degrees
+jointTicks = [47000, 47000, 47000, -1, -1, -1]
 
 class DebugMessage:
     def __init__(self, message):
@@ -31,20 +30,6 @@ class StatusMessage:
 
     def __str__(self):
         return 'Position ({}) - Velocity ({})'.format(self.pos, self.speed)
-
-
-class GripperStatusMessage:
-    def __init__(self, left_gripper, right_gripper, top_switch, bottom_switch, gripper_switch, mode):
-        self.left_gripper = left_gripper
-        self.right_gripper = right_gripper
-        self.top_switch = top_switch
-        self.bottom_switch = bottom_switch
-        self.gripper_switch = gripper_switch
-        self.mode = mode
-
-    def __str__(self):
-        return 'Bumpers ({}, {}) - Gripper ({}, {}, {}) - Mode: {}'.format(
-            self.left_gripper, self.right_gripper, self.top_switch, self.bottom_switch, self.gripper_switch, self.mode)
 
 
 class ClientError(Exception):
@@ -81,12 +66,19 @@ class RobotClient:
                 return DebugMessage(data[1:].decode('utf-8'))
             if data[0] == 1:
                 count = data[1]
-                pos = int.from_bytes(
-                    data[2:6], byteorder='little', signed=True)
-                speed = int.from_bytes(
-                    data[6:8], byteorder='little', signed=True)
+                posArr = []
+                speedArr = []
+                for x in range(count):
+                    ix1 = 2 + x * 6
+                    ix2 = ix1 + 4
+                    pos = int.from_bytes(
+                        data[ix1:ix2], byteorder='little', signed=True)
+                    speed = int.from_bytes(
+                        data[ix2:ix2 + 2], byteorder='little', signed=True)
+                    posArr.append(pos)
+                    speedArr.append(speed)
 
-                return StatusMessage([pos], [speed])
+                return StatusMessage(posArr, speedArr)
             if data[0] == 8:
                 leftGripper = data[1] == 1
                 rightGripper = data[2] == 1
@@ -121,46 +113,25 @@ class RobotClient:
         self.send(rawCmd + ix_bytes + speed_bytes)
         return self.receive()
 
-    def speed(self, rightSpeed, leftSpeed):
-        left_bytes = leftSpeed.to_bytes(2, byteorder='little', signed=True)
-        right_bytes = rightSpeed.to_bytes(2, byteorder='little', signed=True)
-        self.send(speedCmd + left_bytes + right_bytes)
+    def speed(self, ix, speed):
+        ix_bytes = ix.to_bytes(1, byteorder='little', signed=True)
+        speed_bytes = speed.to_bytes(2, byteorder='little', signed=True)
+        self.send(speedCmd + ix_bytes + speed_bytes)
         return self.receive()
 
-    def position(self, rightPos, leftPos):
-        left_bytes = leftPos.to_bytes(4, byteorder='little', signed=True)
-        right_bytes = rightPos.to_bytes(4, byteorder='little', signed=True)
-        self.send(positionCmd + left_bytes + right_bytes)
+    def position(self, ix, pos):
+        ix_bytes = ix.to_bytes(1, byteorder='little', signed=True)
+        pos_bytes = pos.to_bytes(4, byteorder='little', signed=True)
+        self.send(positionCmd + ix_bytes + pos_bytes)
         return self.receive()
     
-    def gripper_open(self):
-        self.send(gripperOpenCmd)
-        return self.receive()
-    
-    def gripper_close(self):
-        self.send(gripperCloseCmd)
-        return self.receive()
-    
-    def move_meters(self, meters):
-        current = self.stop()
-        clicks = self.CLICKS_PER_ROTATION * meters / self.WHEEL_CIRCUMFERENCE
-        return self.position(int(current.right_pos + clicks), int(current.left_pos + clicks))
+    def angle(self, ix, degrees):
+        if degrees < 0 or degrees > 180:
+            raise "Invalid angle: " + degrees
+        if jointTicks[ix] <= 0:
+            raise "Joint not configured!"
+            
+        ticks = int(degrees * jointTicks[ix] / 90.0)
 
-    def forward(self, meters):
-        return self.move_meters(-meters)
+        self.position(ix, ticks)
     
-    def backward(self, meters):
-        return self.move_meters(meters)
-
-    def rotate(self, degrees):
-        current = self.stop()
-        distance = self.ROBOT_CIRCUMFERENCE * degrees / 360.0
-        print()
-        clicks = self.CLICKS_PER_ROTATION * distance / self.WHEEL_CIRCUMFERENCE
-        return self.position(int(current.right_pos + clicks), int(current.left_pos - clicks))
-    
-    def say(self, message):
-        self.speech.say(message)
-    
-    def camera(self):
-        return self.camera.snapshot()

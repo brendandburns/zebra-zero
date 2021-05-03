@@ -15,16 +15,22 @@ if __name__ == "__main__":
     print(res)
     time.sleep(2)
 
+    count = 0
     while True:
         try:
             time.sleep(2)
             res = client.status()
             print(res)
-            res = client.raw(0, -100)
+            res = client.angle(2, 90)
+            # res = client.raw(0, 100)
             print(res)
-            time.sleep(0.5)
-            res = client.stop()
-            print(res)
+            # time.sleep(0.5)
+            # count = count + 1
+            # if count > 5:
+            #    res = client.angle(0, 90)
+            #    print(res)
+            # res = client.stop()
+            # print(res)
         except KeyboardInterrupt:
             client.stop()
             time.sleep(5)
