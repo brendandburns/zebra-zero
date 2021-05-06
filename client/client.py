@@ -3,6 +3,8 @@ import serial
 from cobs import cobs
 import math
 
+from arm import Arm
+
 zeroByte = b'\x00'
 
 debugCmd = b'\x00'
@@ -29,7 +31,8 @@ class StatusMessage:
         self.speed = speedArr
 
     def __str__(self):
-        return 'Position ({}) - Velocity ({})'.format(self.pos, self.speed)
+        degrees = list(map(int, Arm.encoder_to_degrees(self.pos)))
+        return 'Encoders ({}) - Degrees ({}) - Velocity ({})'.format(self.pos, degrees, self.speed)
 
 
 class ClientError(Exception):
@@ -66,8 +69,8 @@ class RobotClient:
                 return DebugMessage(data[1:].decode('utf-8'))
             if data[0] == 1:
                 count = data[1]
-                posArr = []
-                speedArr = []
+                posArr = [0, 0, 0, 0, 0, 0]
+                speedArr = [ 0, 0, 0, 0, 0, 0]
                 for x in range(count):
                     ix1 = 2 + x * 6
                     ix2 = ix1 + 4
@@ -75,19 +78,10 @@ class RobotClient:
                         data[ix1:ix2], byteorder='little', signed=True)
                     speed = int.from_bytes(
                         data[ix2:ix2 + 2], byteorder='little', signed=True)
-                    posArr.append(pos)
-                    speedArr.append(speed)
+                    posArr[x] = pos
+                    speedArr[x] = speed
 
                 return StatusMessage(posArr, speedArr)
-            if data[0] == 8:
-                leftGripper = data[1] == 1
-                rightGripper = data[2] == 1
-                topSwitch = data[3] == 1
-                bottomSwitch = data[4] == 1
-                gripperSwitch = data[5] == 1
-                gripperMode = data[6]
-                
-                return GripperStatusMessage(leftGripper, rightGripper, topSwitch, bottomSwitch, gripperSwitch, gripperMode)
 
             raise "Unknown header: {}".format(data[0])
 
@@ -119,19 +113,47 @@ class RobotClient:
         self.send(speedCmd + ix_bytes + speed_bytes)
         return self.receive()
 
+    def speeds(self, encoders):
+        speeds_bytes = speedCmd
+        for ix in range(len(encoders)):
+            ix_bytes = ix.to_bytes(1, byteorder='litte', signed=True)
+            speed_bytes = encoders[ix].to_bytes(2, byteorder='little', signed=True)
+            speeds_bytes = speeds_bytes + ix_bytes + speed_bytes
+        self.send(speed_bytes)
+        return self.receive()
+
     def position(self, ix, pos):
+        Arm.encoder_within_limits(ix, pos)
+
         ix_bytes = ix.to_bytes(1, byteorder='little', signed=True)
         pos_bytes = pos.to_bytes(4, byteorder='little', signed=True)
         self.send(positionCmd + ix_bytes + pos_bytes)
         return self.receive()
     
-    def angle(self, ix, degrees):
-        if degrees < 0 or degrees > 180:
-            raise "Invalid angle: " + degrees
-        if jointTicks[ix] <= 0:
-            raise "Joint not configured!"
-            
-        ticks = int(degrees * jointTicks[ix] / 90.0)
+    def positions(self, encoders):
+        Arm.encoders_within_limits(encoders)
 
-        self.position(ix, ticks)
+        positions_bytes = positionCmd
+        for ix in range(len(encoders)):
+            ix_bytes = ix.to_bytes(1, byteorder='litte', signed=True)
+            pos_bytes = encoders[ix].to_bytes(4, byteorder='little', signed=True)
+            positions_bytes = positions_bytes + ix_bytes + pos_bytes
+        self.send(positions_bytes)
+        return self.receive()
+    
+    def angle(self, ix, degrees):
+        Arm.degree_within_limits(ix, degrees)
+
+        angles = [0, 0, 0, 0, 0, 0]
+        angles[ix] = degrees
+
+        encoder = Arm.degrees_to_encoder(angles)
+
+        self.position(ix, encoder[ix])
+    
+    def angles(self, degrees):
+        Arm.degrees_within_limits(degrees)
+        encoder = Arm.degrees_to_encoder(degrees)
+        self.positions(encoder)
+
     

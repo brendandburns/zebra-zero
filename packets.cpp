@@ -114,46 +114,54 @@ void Packets::handleRaw(const uint8_t *buffer, size_t size)
 // Expected format is 0x04 | index | speed
 void Packets::handleSpeed(const uint8_t *buffer, size_t size)
 {
-  if (size != 4)
+  // count * 3 (speeds) + 1 (header)
+  if ((size % 3) != 1)
   {
-    panic("Wrong size speed!");
+    panic("wrong size speed!");
     return;
   }
 
-  int index = buffer[1];
-  if (index >= this->count) {
-    panic("Motor index too large!");
-    return;
+  int count = (size - 1) / 3;
+  for (int i = 0; i < count; i++) {
+    const uint8_t *ptr = buffer + i * 3 + 1;
+    if (*ptr >= this->count) {
+      panic("Motor index too large!");
+      return;
+    }
+
+    int speed;
+    memcpy(&speed, ptr + 1, 2);
+
+    this->motors[*ptr]->setDesiredSpeed(speed);
   }
-
-  int speed;
-  memcpy(&speed, buffer + 2, 2);
-
-  this->motors[index]->setDesiredSpeed(speed);
   this->sendStatus();
 }
 
 // Set the desired position for the wheels
-// Format is 0x05 | index | rightPosition
+// Format is 0x05 | index-0 | position-0 | ... | index-N | position-N
 void Packets::handlePosition(const uint8_t *buffer, size_t size)
 {
-  long pos;
-
-  if (size != 6)
+  // Length should be # of positions * 5 bytes + 1 for the header
+  if ((size % 5) != 1)
   {
     panic("wrong size position!");
     return;
   }
 
-  int index = buffer[1];
-  if (index >= this->count) {
-    panic("Motor index too large!");
-    return;
+  int count = (size - 1) / 5;
+  for (int i = 0; i < count; i++) {
+    long pos;
+    const uint8_t *ptr = buffer + i * 5 + 1;
+
+    if (*ptr >= this->count) {
+      panic("Motor index too large!");
+      return;
+    }
+
+
+    memcpy(&pos, ptr + 1, 4);
+    this->motors[*ptr]->setPosition(pos);
   }
-
-
-  memcpy(&pos, buffer + 2, 4);
-  this->motors[index]->setPosition(pos);
   this->sendStatus();
 }
 
