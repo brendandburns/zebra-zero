@@ -1,6 +1,7 @@
 {
     "sketch": "arm.ino",
-    "configuration": "cpu=atmega2560",
-    "board": "arduino:avr:mega",
+    "configuration": "PartitionScheme=default,FlashFreq=80,UploadSpeed=921600,DebugLevel=none",
+    "board": "esp32:esp32:node32s",
+    "output": "./build",
     "port": "/dev/ttyACM0"
 }
